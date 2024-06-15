@@ -10,7 +10,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QImage
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
-from std_srvs.srv import Trigger
+from ai_host.srv import tag_person
 from ai_host.msg import FaceRecognition
 
 
@@ -69,16 +69,9 @@ class VideoThread(QThread):
             face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
             
             if len(self.recognized_faces)>0:
-                for (top, right, bottom, left) in face_locations:
-                    name = "Unknown"
-                    for recognized_face in self.recognized_faces:
-                        if recognized_face.top == top and recognized_face.right == right and recognized_face.bottom == bottom and recognized_face.left == left:
-                            name = recognized_face.name
-                            self.recognized_faces.remove(recognized_face)  # Remove the processed face message
-                            break
-                    label = f"{name}: {left}, {top}, {right}, {bottom}" if name != "Unknown" else "Unknown"
-                    cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-                    cv2.putText(frame, label, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                detection_data = self.recognized_faces.pop()
+                cv2.rectangle(frame, (detection_data.left, detection_data.top), (detection_data.right, detection_data.bottom), (0, 255, 0), 2)
+                cv2.putText(frame, detection_data.name.split('/')[-1], (detection_data.left, detection_data.top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             
             else :
                 for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
@@ -132,8 +125,8 @@ class VideoThread(QThread):
         #if '/start_tagging' in service_list:
         # Call the start_tagging service in FaceRecognitionNode
         try:
-            start_tagging_service = rospy.ServiceProxy('process_faces', Trigger)
-            response = start_tagging_service()
+            start_tagging_service = rospy.ServiceProxy('process_faces', tag_person)
+            response = start_tagging_service(str(self.tagged_face_dir))
         except rospy.ServiceException as e:
             rospy.logerr(f"Service call failed: {e}")       
             

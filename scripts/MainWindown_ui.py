@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import  (QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QWidget,
+from PyQt5.QtWidgets import (QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QWidget,
                              QPushButton, QTextEdit, QInputDialog, QDialog)
 from PyQt5.QtGui import QPixmap
 from dialog_ui import ListFacesDialog,DeleteFaceDialog
