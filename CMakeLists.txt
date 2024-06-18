@@ -20,7 +20,8 @@ find_package(catkin REQUIRED COMPONENTS
 ## Generate messages in the 'msg' folder
 add_message_files(
   FILES
-  FaceRecognition.msg
+  face_cord.msg
+  face_cord_list.msg
 )
 
 ## Generate services in the 'srv' folder

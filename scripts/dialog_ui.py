@@ -28,14 +28,17 @@ class DeleteFaceDialog(QDialog):
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
         layout.addWidget(self.button_box)
-
-    def get_selected_person(self):
-        selected_row = self.table_widget.currentRow()
-        if selected_row != -1:
-            return self.table_widget.item(selected_row, 0).text()
-        else:
-            return None
-
+    
+    def get_selected_people(self):
+        selected_rows = self.table_widget.selectionModel().selectedRows()
+        selected_people = []
+        for row in selected_rows:
+            if row.column() == 0:  # Ensure we are only interested in the first column
+                item = self.table_widget.item(row.row(), 0)
+                if item is not None:
+                    selected_people.append(item.text())
+        return selected_people
+    
 
 class ListFacesDialog(QDialog):
     def __init__(self, parent, base_dir):

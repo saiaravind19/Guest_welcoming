@@ -11,7 +11,7 @@ from PyQt5.QtGui import QImage
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 from ai_host.srv import tag_person
-from ai_host.msg import FaceRecognition
+from ai_host.msg import face_cord_list
 
 
 class VideoThread(QThread):
@@ -24,19 +24,24 @@ class VideoThread(QThread):
         self.known_face_encodings = []
         self.known_face_names = []
         self.base_dir = 'segregated_faces'
-
+        self.frame_image = None
         rospy.init_node('webcam_image_publisher', anonymous=True)
-        self.image_pub = rospy.Publisher('/webcam_image', Image, queue_size=10)
+        self.image_sub = rospy.Subscriber('/usb_cam/image_raw', Image, self.image_callback)
         self.bridge = CvBridge()
-
+        self.image_run_flag = False 
         self.tag_face = False
         self.tagged_face_dir = None
         self.tag_timer = None
         self.recognized_faces = []
+        self.rate = rospy.Rate(10)
 
-        rospy.Subscriber('/recognized_faces', FaceRecognition, self.recognized_faces_callback)
+        #rospy.Subscriber('/recognized_faces', face_cord_list, self.recognized_faces_callback)
 
-
+    def image_callback(self, msg):
+        
+        self.frame_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+        self.image_run_flag = True
+        
 
     def clear_directory(self, directory):
         if not os.path.exists(directory):
@@ -58,46 +63,48 @@ class VideoThread(QThread):
         self.recognized_faces.append(msg)
 
     def run(self):
-        cap = cv2.VideoCapture(self.video_source)
         while self._run_flag:
-            ret, frame = cap.read()
-            if not ret:
-                break
+            if self.image_run_flag :
+                frame = copy.deepcopy(self.frame_image)
 
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            face_locations = face_recognition.face_locations(rgb_frame)
-            face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
-            
-            if len(self.recognized_faces)>0:
-                detection_data = self.recognized_faces.pop()
-                cv2.rectangle(frame, (detection_data.left, detection_data.top), (detection_data.right, detection_data.bottom), (0, 255, 0), 2)
-                cv2.putText(frame, detection_data.name.split('/')[-1], (detection_data.left, detection_data.top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            
-            else :
-                for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                face_locations = face_recognition.face_locations(rgb_frame)
+
+                if len(self.recognized_faces)>0:
+                    detection_data = self.recognized_faces.pop()
+                    for face in detection_data.face_list:
+                        cv2.rectangle(frame, (face.left, face.top), (face.right, face.bottom), (0, 255, 0), 2)
+                        cv2.putText(frame, face.name.split('/')[-1], (face.left, face.top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+                else :
                     if self.tag_face and self.tagged_face_dir:
-                        face_image = frame[top:bottom, left:right]
-                        frame_counter = len([name for name in os.listdir(self.tagged_face_dir) if "frame" in name])
-                        frame_name = os.path.join(self.tagged_face_dir, f"frame_{frame_counter}.jpg")
-                        cv2.imwrite(frame_name, face_image)
-                        print(f"Saved {frame_name}")
+                        face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
 
-                for (top, right, bottom, left) in face_locations:
-                    cv2.rectangle(frame, (left, top), (right, bottom), (255, 0, 0), 2)
+                        for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
+                            face_image = frame[top:bottom, left:right]
+                            frame_counter = len([name for name in os.listdir(self.tagged_face_dir) if "frame" in name])
+                            frame_name = os.path.join(self.tagged_face_dir, f"frame_{frame_counter}.jpg")
+                            cv2.imwrite(frame_name, face_image)
+                            print(f"Saved {frame_name}")
 
-            # Convert frame to QImage and emit signal
-            rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            h, w, ch = rgb_image.shape
-            bytes_per_line = ch * w
-            convert_to_qt_format = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888)
-            p = convert_to_qt_format.scaled(640, 480, aspectRatioMode=0)
-            self.change_pixmap_signal.emit(p)
+                    for (top, right, bottom, left) in face_locations:
+                        cv2.rectangle(frame, (left, top), (right, bottom), (255, 0, 0), 2)
 
-            # Publish frame to ROS
-            ros_image = self.bridge.cv2_to_imgmsg(frame, "bgr8")
-            self.image_pub.publish(ros_image)
+                # Convert frame to QImage and emit signal
+                rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                h, w, ch = rgb_image.shape
+                bytes_per_line = ch * w
+                convert_to_qt_format = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888)
+                p = convert_to_qt_format.scaled(640, 480, aspectRatioMode=0)
+                self.change_pixmap_signal.emit(p)
 
-        cap.release()
+            else :
+                self.rate.sleep()
+                # Publish frame to ROS
+                #ros_image = self.bridge.cv2_to_imgmsg(frame, "bgr8")
+                #self.image_pub.publish(ros_image)
+
+        #cap.release()
 
     def stop(self):
         self._run_flag = False
@@ -125,6 +132,7 @@ class VideoThread(QThread):
         #if '/start_tagging' in service_list:
         # Call the start_tagging service in FaceRecognitionNode
         try:
+            rospy.wait_for_service('process_faces',timeout=3)
             start_tagging_service = rospy.ServiceProxy('process_faces', tag_person)
             response = start_tagging_service(str(self.tagged_face_dir))
         except rospy.ServiceException as e:

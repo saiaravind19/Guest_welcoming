@@ -61,25 +61,31 @@ class MainWindow(QMainWindow):
     def tag_face(self):
         text, ok = QInputDialog.getText(self, 'Tag Face', 'Enter name for tagging:')
         if ok and text:
-            self.log_text.append(f"Tagging Face: {text}")
+            text = text.strip()  # Remove leading and trailing whitespace
+            self.log_text.append(f"Tagging user: {text}")
             self.thread.start_tagging(text)
 
+
+    
     def delete_tagged_faces(self):
         dialog = DeleteFaceDialog(self, self.thread.base_dir)
         if dialog.exec_() == QDialog.Accepted:
-            selected_person = dialog.get_selected_person()
-            if selected_person:
-                person_dir = os.path.join(self.thread.base_dir, selected_person)
-                if os.path.exists(person_dir):
-                    for root, dirs, files in os.walk(person_dir):
-                        for file in files:
-                            os.remove(os.path.join(root, file))
-                        for dir in dirs:
-                            os.rmdir(os.path.join(root, dir))
-                    os.rmdir(person_dir)
-                    self.log_text.append(f"Deleted tagged faces for {selected_person}")
-                else:
-                    self.log_text.append(f"No tagged faces found for {selected_person}")
+            selected_people = dialog.get_selected_people()  # Assuming get_selected_people() returns a list of selected people
+            if selected_people:
+                for person in selected_people:
+                    person_dir = os.path.join(self.thread.base_dir, person)
+                    if os.path.exists(person_dir):
+                        for root, dirs, files in os.walk(person_dir, topdown=False):
+                            for file in files:
+                                os.remove(os.path.join(root, file))
+                            for dir in dirs:
+                                os.rmdir(os.path.join(root, dir))
+                        os.rmdir(person_dir)
+                        self.log_text.append(f"Deleted tagged faces for {person}")
+                    else:
+                        self.log_text.append(f"No tagged faces found for {person}")
+            else:
+                self.log_text.append("No users selected for deletion")
 
     def list_tagged_faces(self):
         dialog = ListFacesDialog(self, self.thread.base_dir)
